@@ -149,6 +149,9 @@ Performance Evaluation
 Best Model Selection
 
 ---
+## Block Diagram
+<img width="685" height="207" alt="image" src="https://github.com/user-attachments/assets/7c05245e-733a-4e86-a142-f62f6e98b124" />
+
 
 ## Data Preprocessing
 
