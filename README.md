@@ -1,8 +1,6 @@
 # EEG-Seizure-and-Sleep-disorder-classification
 # EEG-Based Classification of Seizure and Sleeping Disorders using Machine Learning
 
-<img width="780" height="435" alt="image" src="https://github.com/user-attachments/assets/5af9ee05-6a12-45ab-a01d-f9a3ae01ee86" />
-
 
 ## Overview
 
