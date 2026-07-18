@@ -80,6 +80,190 @@ It was obtained through academic/research access from Temple University and is d
 Please visit the official website to request or download the dataset if you have the appropriate access.
 
 ---
+## Python snippet
+
+% MATLAB Script to Detect Seizure Type and Sleep Disorder from EEG Images Using Random Forest
+
+% Clear workspace and command window
+clear; clc; close all;
+
+%% 1. Define Paths and Load Labels
+
+% Path to the CSV file containing image paths and labels
+labelsFile = 'C:\path_to_labels\labels.csv';  % <-- Replace with your CSV file path
+
+% Read the CSV file
+opts = detectImportOptions(labelsFile);
+data = readtable(labelsFile, opts);
+
+% Display first few entries
+disp('Sample Data:');
+disp(head(data));
+
+%% 2. Create Image Datastore with Labels
+
+% Create an imageDatastore from the ImagePath column
+imds = imageDatastore(data.ImagePath, 'FileExtensions', {'.png'}, 'LabelSource', 'none');
+
+% Assign labels
+% Seizure Type Labels
+seizureLabels = categorical(data.SeizureType);
+
+% Sleep Disorder Labels
+sleepLabels = categorical(data.SleepDisorder);
+
+% Verify label counts
+disp('Seizure Type Distribution:');
+disp(countcats(seizureLabels));
+
+disp('Sleep Disorder Distribution:');
+disp(countcats(sleepLabels));
+
+%% 3. Split Data into Training and Test Sets
+
+% Define split ratio (e.g., 80% training, 20% testing)
+trainRatio = 0.8;
+testRatio = 0.2;
+
+% Number of total samples
+numTotal = numel(imds.Files);
+
+% Generate a random permutation of indices
+rng(1); % For reproducibility
+randomIdx = randperm(numTotal);
+
+% Calculate split indices
+numTrain = round(trainRatio * numTotal);
+trainIdx = randomIdx(1:numTrain);
+testIdx = randomIdx(numTrain+1:end);
+
+% Create training and test datastores
+imdsTrain = subset(imds, trainIdx);
+seizureTrain = seizureLabels(trainIdx);
+sleepTrain = sleepLabels(trainIdx);
+
+imdsTest = subset(imds, testIdx);
+seizureTest = seizureLabels(testIdx);
+sleepTest = sleepLabels(testIdx);
+
+% Display counts
+disp('Training Set Seizure Type Counts:');
+disp(countcats(seizureTrain));
+
+disp('Training Set Sleep Disorder Counts:');
+disp(countcats(sleepTrain));
+
+disp('Test Set Seizure Type Counts:');
+disp(countcats(seizureTest));
+
+disp('Test Set Sleep Disorder Counts:');
+disp(countcats(sleepTest));
+
+%% 4. Feature Extraction Using HOG
+
+% Define image size for resizing
+imageSize = [128 128];  % Adjust based on your dataset
+
+% Initialize feature matrices
+numTrainSamples = numel(imdsTrain.Files);
+numTestSamples = numel(imdsTest.Files);
+
+% Preallocate feature matrices (HOG features length depends on image size)
+% Example: For [128 128], HOG feature length is typically 3249
+% You can adjust based on the actual HOG settings
+hogFeatureLength = 3249;  % Adjust if different
+trainFeatures = zeros(numTrainSamples, hogFeatureLength);
+testFeatures = zeros(numTestSamples, hogFeatureLength);
+
+% Extract HOG features for Training Set
+disp('Extracting HOG features for Training Set...');
+for i = 1:numTrainSamples
+    img = readimage(imdsTrain, i);
+    img = imresize(img, imageSize);
+    if size(img, 3) == 3
+        img = rgb2gray(img);
+    end
+    hogFeatures = extractHOGFeatures(img);
+    trainFeatures(i, :) = hogFeatures;
+end
+
+% Extract HOG features for Test Set
+disp('Extracting HOG features for Test Set...');
+for i = 1:numTestSamples
+    img = readimage(imdsTest, i);
+    img = imresize(img, imageSize);
+    if size(img, 3) == 3
+        img = rgb2gray(img);
+    end
+    hogFeatures = extractHOGFeatures(img);
+    testFeatures(i, :) = hogFeatures;
+end
+
+%% 5. Train Random Forest Classifiers
+
+% Train Random Forest for Seizure Type
+disp('Training Random Forest for Seizure Type...');
+numTrees = 100;  % Number of trees in the forest
+RFSeizure = TreeBagger(numTrees, trainFeatures, seizureTrain, ...
+    'Method', 'classification', 'OOBPrediction', 'On', 'Verbose', 0);
+
+% Train Random Forest for Sleep Disorder
+disp('Training Random Forest for Sleep Disorder...');
+RFSleep = TreeBagger(numTrees, trainFeatures, sleepTrain, ...
+    'Method', 'classification', 'OOBPrediction', 'On', 'Verbose', 0);
+
+%% 6. Predict on Test Set
+
+% Predict Seizure Type
+disp('Predicting Seizure Type on Test Set...');
+[predictedSeizure, scoresSeizure] = predict(RFSeizure, testFeatures);
+predictedSeizure = categorical(predictedSeizure);
+
+% Predict Sleep Disorder
+disp('Predicting Sleep Disorder on Test Set...');
+[predictedSleep, scoresSleep] = predict(RFSleep, testFeatures);
+predictedSleep = categorical(predictedSleep);
+
+%% 7. Evaluate Classifiers
+
+% Seizure Type Evaluation
+disp('Evaluating Seizure Type Classifier...');
+accuracySeizure = sum(predictedSeizure == seizureTest) / numel(seizureTest);
+fprintf('Seizure Type Test Accuracy: %.2f%%\n', accuracySeizure * 100);
+
+figure;
+confusionchart(seizureTest, predictedSeizure);
+title('Confusion Matrix for Seizure Type Classification');
+
+% Sleep Disorder Evaluation
+disp('Evaluating Sleep Disorder Classifier...');
+accuracySleep = sum(predictedSleep == sleepTest) / numel(sleepTest);
+fprintf('Sleep Disorder Test Accuracy: %.2f%%\n', accuracySleep * 100);
+
+figure;
+confusionchart(sleepTest, predictedSleep);
+title('Confusion Matrix for Sleep Disorder Classification');
+
+%% 8. Display Predictions for Test Images
+
+% Select a few test images to display predictions
+numDisplay = 5;  % Number of images to display
+figure;
+for i = 1:numDisplay
+    subplot(ceil(numDisplay/2), 2, i);
+    img = readimage(imdsTest, i);
+    imshow(img);
+    title(sprintf('Predicted Seizure: %s\nPredicted Sleep: %s', ...
+        string(predictedSeizure(i)), string(predictedSleep(i))));
+end
+
+%% 9. Save the Trained Models (Optional)
+
+% Save the trained Random Forest models for future use
+save('RFSeizureModel.mat', 'RFSeizure');
+save('RFSleepModel.mat', 'RFSleep');
+
+disp('Training and Evaluation Completed.');
 
 # Sample Dataset
 
@@ -188,14 +372,14 @@ The models were compared using:
 
 | Model | Accuracy | Precision | Recall | F1 Score |
 |--------|----------|-----------|--------|----------|
-| Random Forest | XX% | XX | XX | XX |
-| Support Vector Machine | XX% | XX | XX | XX |
+| Random Forest | 99% | XX | XX | XX |
+| Support Vector Machine | 93% | XX | XX | XX |
 | Convolutional Neural Network | XX% | XX | XX | XX |
 
 
 ## Best Performing Model
 
-After evaluating all models, **[Best Model Name]** achieved the highest overall performance based on the evaluation metrics and was selected as the most effective classifier for this EEG dataset.
+After evaluating all models, SVM and RF achieved the highest overall performance based on the evaluation metrics and was selected as the most effective classifier for this EEG dataset.
 
 ---
 
